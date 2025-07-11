@@ -1,17 +1,21 @@
-mod compressor;
-
 use std::fs::Metadata;
 
-struct ratEntry_file<'a> {
-    dir_path: &'a  str,
-    path: &'a  str,
+struct RatEntryFile {
+    absolutePath: String,
+    dir_path: String,
+    path: String,
     metadata: Metadata, 
 }
 
-struct ratEntry_dir<'a> {
-    path: &'a str&
+struct RatEntryDir {
+    absolutePath: String,
+    path: String,
 }
 
-fn archiveFile(rat_name: str&, paths: [str&]&) -> () {
+pub fn archive_file(_rat_name: String, _paths: &Vec<String>) -> () {
     
+}
+
+pub fn extract_file(_rat_name: String, _path_out: String) -> () {
+
 }
