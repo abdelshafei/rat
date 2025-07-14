@@ -155,8 +155,8 @@ encode_into_writer(entry, &mut writer, Config::default())?;
 
 * Add compression support (gzip, zstd)
 * Implement extraction logic
-* Cross-platform support (Windows, macOS)
 * Restore permissions and timestamps after extraction
 * Add integrity checks (hashing)
 * Support for extended file types (sockets, pipes)
+* Cross-platform support (Windows, macOS)
 
