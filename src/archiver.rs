@@ -38,7 +38,7 @@ struct RatEntryDir {
 
 fn serialize_file_entry(path: &String, data: &Metadata, writer: &mut BufWriter<File>, seen: &mut HashMap<(u64, u64), String>) -> std::io::Result<()>  {
 
-    let mut entry: RatEntryFile;
+    let entry: RatEntryFile; // Assigning only once to the varibale so we dont need the mut keyword
 
     if data.is_file() {
 
