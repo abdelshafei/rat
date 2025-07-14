@@ -160,8 +160,3 @@ encode_into_writer(entry, &mut writer, Config::default())?;
 * Add integrity checks (hashing)
 * Support for extended file types (sockets, pipes)
 
----
-
-## License
-
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
