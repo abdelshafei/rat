@@ -17,7 +17,6 @@
 * [Technical Design](#technical-design)
 * [Limitations](#limitations)
 * [Future Work](#future-work)
-* [License](#license)
 
 ---
 
