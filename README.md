@@ -41,7 +41,7 @@
 Ensure that you have Rust and Cargo installed. Clone the repository and build the binary:
 
 ```bash
-git clone https://github.com/yourusername/rat.git
+git clone https://github.com/abdelshafei/rat.git
 cd rat
 cargo build --release
 ```
@@ -55,7 +55,7 @@ The compiled binary will be available in `target/release/rat`.
 ### Creating an Archive
 
 ```bash
-rat create -f archive_name.rat -p file1.txt dir/ link_to_file
+rat create -f archive_name -p file1.txt dir/ link_to_file
 ```
 
 Options:
@@ -66,7 +66,7 @@ Options:
 ### Extracting an Archive
 
 ```bash
-rat extract -f archive_name.rat --output-dir extracted/
+rat extract -f archive_name --output-dir extracted/
 ```
 
 Options:

@@ -39,17 +39,20 @@ enum Commands {
 
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args = CLI::parse();
 
     match args.command {
         Commands::Create { _arch_name, _paths } => {
-            archiver::archive_file(_arch_name, &_paths);
+            match archiver::archive_file(_arch_name, &_paths) {
+                Ok(_) => {},
+                Err(error) => print!("{}\n", error),
+            };
         } 
 
         Commands::Extract { _arch_name, _output_dir } => {
-            archiver::extract_file(_arch_name, _output_dir);
+            archiver::extract_file(_arch_name, _output_dir)?;
         }
     }
 

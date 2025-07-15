@@ -1,14 +1,14 @@
 use std::{
-    fs,
+    fs::{self, File, Metadata},
     collections::HashMap,
-    io::BufWriter,
+    io::{self, BufWriter},
     os::unix::fs::MetadataExt
 };
 use serde::{Serialize, Deserialize};
-pub use de::{BorrowDecode, Decode};
-pub use enc::Encode;
-use bincode::{encode_into_writer, Config}; 
+use bincode::serialize_into;
+use std::io::Write;
 
+#[derive(Serialize, Deserialize, Debug)]
 enum FileType {
     RegFile,
     SymbFile,
@@ -26,7 +26,7 @@ struct RatEntryFile {
     _inode: u64,      
     _dev: u64,
     _mode: u32,
-    _m_time: u64, // modified time stamp
+    _m_time: i64, // modified time stamp
     _type: FileType
 }
 
@@ -36,24 +36,46 @@ struct RatEntryDir {
     _files: Vec<RatEntryFile>
 }
 
-fn serialize_file_entry(path: &String, data: &Metadata, writer: &mut BufWriter<File>, seen: &mut HashMap<(u64, u64), String>) -> std::io::Result<()>  {
+fn serialize_file_entry(path: &String, data: &Metadata, writer: &mut BufWriter<File>, seen: &mut HashMap<(u64, u64), Option<String>>) -> std::io::Result<()>  {
 
     let entry: RatEntryFile; // Assigning only once to the varibale so we dont need the mut keyword
 
     if data.is_file() {
 
-        if seen.contains_key((data.ino(), data.dev())) { // If hard linked to an already encountered file
-            entry = RatEntryFile {
-                _path: path.to_string(),
-                _content: None,
-                _size: data.size(),
-                _target: None,   
-                _inode: data.ino(),      
-                _dev: data.dev(),
-                _mode: data.mode(),
-                _m_time: data.mtime(),
-                _type: FileType::HrdLnkFile
+        let canonical = Some(fs::canonicalize(path)?.to_string_lossy().to_string());
+
+        if let Some(existing) = seen.get(&(data.ino(), data.dev())) {
+
+            if existing == &canonical { // Same path referencing the same file (non hard link)
+                entry = RatEntryFile {
+                    _path: path.to_string(),
+                    _content: Some(fs::read(&path)?),
+                    _size: data.size(),
+                    _target: None,   
+                    _inode: data.ino(),      
+                    _dev: data.dev(),
+                    _mode: data.mode(),
+                    _m_time: data.mtime(),
+                    _type: FileType::HrdLnkFile
+                };
+
+                serialize_into(writer, &entry).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            } else { // Hard linked
+                entry = RatEntryFile {
+                    _path: path.to_string(),
+                    _content: None,
+                    _size: data.size(),
+                    _target: None,   
+                    _inode: data.ino(),      
+                    _dev: data.dev(),
+                    _mode: data.mode(),
+                    _m_time: data.mtime(),
+                    _type: FileType::HrdLnkFile
+                };
+
+                serialize_into(writer, &entry).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
             }
+
         } else {
             entry = RatEntryFile {
                 _path: path.to_string(),
@@ -65,10 +87,12 @@ fn serialize_file_entry(path: &String, data: &Metadata, writer: &mut BufWriter<F
                 _mode: data.mode(),
                 _m_time: data.mtime(),
                 _type: FileType::RegFile
-            }
+            };
+
+            serialize_into(writer, &entry).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         }
 
-        seen.insert((entry._inode, entry._dev), fs::canonicalize(&path)?.to_string_lossy().to_string())
+        seen.insert((entry._inode, entry._dev), Some(fs::canonicalize(&path)?.to_string_lossy().to_string()));
     } else if data.is_symlink() {
         entry = RatEntryFile {
             _path: path.to_string(),
@@ -80,35 +104,46 @@ fn serialize_file_entry(path: &String, data: &Metadata, writer: &mut BufWriter<F
             _mode: data.mode(),
             _m_time: data.mtime(),
             _type: FileType::SymbFile
-        }
-    }
+        };
 
-    encode_into_writer(entry, &mut writer, Config::default())?;
+        serialize_into(writer, &entry).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    }
     Ok(())
 }
 
-pub fn archive_file(_rat_name: String, _paths: &Vec<String>) -> std::io::Result<()> {
+// fn fetch_dir_files(_path: &String, _writer: &mut BufWriter<File>, _seen: &mut HashMap<(u64, u64), String>) -> std::io::Result<()>  {
+//     Ok(())
+// }
 
-    let mut archive = File::create(format!("{}.rat", _rat_name))?;
-    let mut writer = BufWriter::new(archive);
-    let mut seen: HashMap<(u64, u64), String> = HashMap::new(); // Checks if two files are the same file or hard-linked by mapping each dev and inode number to an absolute path
+pub fn archive_file(_rat_name: String, _paths: &Vec<String>) -> std::io::Result<()> {
 
     for path in _paths.iter() {
 
-        let data = match fs::symlink_metadata(path) {
+        let _data = match fs::symlink_metadata(path) {
             Ok(data) => data,
             Err(_) => return Err(io::Error::new(io::ErrorKind::InvalidInput, format!("PATH ERR: {} does not exist!", path))),
         };
 
-        if if data.is_dir() {
-            
-        } else { // if its a file or a symbolic link
-
-        }
-
     }
+
+    let archive = File::create(format!("{}.rat", _rat_name))?;
+    let mut writer = BufWriter::new(archive);
+    let mut seen: HashMap<(u64, u64), Option<String>> = HashMap::new(); // Checks if two files are the same file or hard-linked by mapping each dev and inode number to an absolute path
+
+    for path in _paths.iter() {
+
+        let data = fs::symlink_metadata(path)?;
+
+        if data.is_dir() {
+                
+        } else { // if its a file or a symbolic link
+            serialize_file_entry(path, &data, &mut writer, &mut seen)?;
+        }
+    }
+
+    writer.flush()?;
+
+    Ok(())
 }
 
-pub fn extract_file(_rat_name: String, _path_out: String) -> () {
-
-}
+pub fn extract_file(_rat_name: String, _path_out: String) -> std::io::Result<()> { Ok(()) }
