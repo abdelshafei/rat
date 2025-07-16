@@ -9,6 +9,12 @@ use bincode::serialize_into;
 use std::io::Write;
 
 #[derive(Serialize, Deserialize, Debug)]
+enum RatEntry {
+    File(RatEntryFile),
+    Dir(RatEntryDir)
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 enum FileType {
     RegFile,
     SymbFile,
@@ -33,7 +39,7 @@ struct RatEntryFile {
 #[derive(Serialize, Deserialize, Debug)]
 struct RatEntryDir {
     _path: String,
-    _files: Vec<RatEntryFile>
+    _files: Vec<RatEntry>
 }
 
 fn serialize_file_entry(path: &String, data: &Metadata, writer: &mut BufWriter<File>, seen: &mut HashMap<(u64, u64), Option<String>>) -> std::io::Result<()>  {
@@ -111,9 +117,16 @@ fn serialize_file_entry(path: &String, data: &Metadata, writer: &mut BufWriter<F
     Ok(())
 }
 
-// fn fetch_dir_files(_path: &String, _writer: &mut BufWriter<File>, _seen: &mut HashMap<(u64, u64), String>) -> std::io::Result<()>  {
-//     Ok(())
-// }
+fn fetch_dir_files(_path: &String, _writer: &mut BufWriter<File>, _seen: &mut HashMap<(u64, u64), String>) -> std::io::Result<()>  {
+
+    let mut paths: Vec<RatEntry>;
+
+    for entry in WalkDir::new(_path).into_iter().filter_map(|e| e.ok()) { // ignores entries the owner of process has no access previlige to it
+       
+    }
+
+    Ok(())
+}
 
 pub fn archive_file(_rat_name: String, _paths: &Vec<String>) -> std::io::Result<()> {
 
@@ -121,10 +134,13 @@ pub fn archive_file(_rat_name: String, _paths: &Vec<String>) -> std::io::Result<
 
         let _data = match fs::symlink_metadata(path) {
             Ok(data) => data,
-            Err(_) => return Err(io::Error::new(io::ErrorKind::InvalidInput, format!("PATH ERR: {} does not exist!", path))),
-        };
-
-    }
+            Err(e) => match e.kind() {
+                io::ErrorKind::NotFound => return Err(io::Error::new(io::ErrorKind::NotFound, format!("{} does not exist!", path))),
+                io::ErrorKind::PermissionDenied => return Err(io::Error::new(io::ErrorKind::PermissionDenied, format!("Access denied for {}!", path))),
+                io::ErrorKind::InvalidInput => return Err(io::Error::new(io::ErrorKind::InvalidInput, format!("{} does not exist!", path))),
+            },
+        },
+    };
 
     let archive = File::create(format!("{}.rat", _rat_name))?;
     let mut writer = BufWriter::new(archive);
@@ -135,7 +151,7 @@ pub fn archive_file(_rat_name: String, _paths: &Vec<String>) -> std::io::Result<
         let data = fs::symlink_metadata(path)?;
 
         if data.is_dir() {
-                
+            fetch_dir_files(path, &mut writer, &mut seen);
         } else { // if its a file or a symbolic link
             serialize_file_entry(path, &data, &mut writer, &mut seen)?;
         }

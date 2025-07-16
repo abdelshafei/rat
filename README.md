@@ -146,7 +146,6 @@ encode_into_writer(entry, &mut writer, Config::default())?;
 * No compression (future feature)
 * POSIX-specific: Uses Unix-only traits (e.g., `MetadataExt`)
 * Extraction logic not fully implemented
-* Does not preserve file permissions or ownership during extraction
 
 ---
 
