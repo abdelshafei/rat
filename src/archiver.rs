@@ -1,49 +1,6 @@
-use std::{
-    fs::{self, File, Metadata},
-    collections::HashMap,
-    io::{self, BufWriter},
-    os::unix::fs::MetadataExt
-};
-use serde::{Serialize, Deserialize};
-use bincode::serialize_into;
-use std::io::Write;
+mod config;
 
-#[derive(Serialize, Deserialize, Debug)]
-enum RatEntry {
-    File(RatEntryFile),
-    Dir(RatEntryDir)
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-enum FileType {
-    RegFile,
-    SymbFile,
-    HrdLnkFile,
-    CharDev,
-    BlocDev
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct RatEntryFile {
-    _path: String,
-    _content: Option<Vec<u8>>,
-    _size: u64,
-    _target: Option<String>,   // Only if it's a symlink
-    _inode: u64,      
-    _dev: u64,
-    _mode: u32,
-    _m_time: i64, // modified time stamp
-    _type: FileType
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct RatEntryDir {
-    _path: String,
-    _files: Vec<RatEntry>
-}
-
-fn serialize_file_entry(path: &String, data: &Metadata, writer: &mut BufWriter<File>, seen: &mut HashMap<(u64, u64), Option<String>>) -> std::io::Result<()>  {
-
+fn construct_file_entry(path: &String, data: &Metadata, seen: &mut HashMap<(u64, u64), Option<String>>) -> RatEntryFile {
     let entry: RatEntryFile; // Assigning only once to the varibale so we dont need the mut keyword
 
     if data.is_file() {
@@ -54,78 +11,116 @@ fn serialize_file_entry(path: &String, data: &Metadata, writer: &mut BufWriter<F
 
             if existing == &canonical { // Same path referencing the same file (non hard link)
                 entry = RatEntryFile {
-                    _path: path.to_string(),
-                    _content: Some(fs::read(&path)?),
-                    _size: data.size(),
-                    _target: None,   
-                    _inode: data.ino(),      
-                    _dev: data.dev(),
-                    _mode: data.mode(),
-                    _m_time: data.mtime(),
-                    _type: FileType::HrdLnkFile
+                    path: path.to_string(),
+                    content: Some(fs::read(&path)?),
+                    size: data.size(),
+                    target: None,   
+                    inode: data.ino(),      
+                    dev: data.dev(),
+                    mode: data.mode(),
+                    mtime: data.mtime(),
+                    type: FileType::RegFile
                 };
 
-                serialize_into(writer, &entry).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
             } else { // Hard linked
                 entry = RatEntryFile {
-                    _path: path.to_string(),
-                    _content: None,
-                    _size: data.size(),
-                    _target: None,   
-                    _inode: data.ino(),      
-                    _dev: data.dev(),
-                    _mode: data.mode(),
-                    _m_time: data.mtime(),
-                    _type: FileType::HrdLnkFile
+                    path: path.to_string(),
+                    content: None,
+                    size: data.size(),
+                    target: None,   
+                    inode: data.ino(),      
+                    dev: data.dev(),
+                    mode: data.mode(),
+                    mtime: data.mtime(),
+                    type: FileType::HrdLnkFile
                 };
 
-                serialize_into(writer, &entry).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
             }
 
         } else {
             entry = RatEntryFile {
-                _path: path.to_string(),
-                _content: Some(fs::read(&path)?),
-                _size: data.size(),
-                _target: None,   
-                _inode: data.ino(),      
-                _dev: data.dev(),
-                _mode: data.mode(),
-                _m_time: data.mtime(),
-                _type: FileType::RegFile
+                path: path.to_string(),
+                content: Some(fs::read(&path)?),
+                size: data.size(),
+                target: None,   
+                inode: data.ino(),      
+                dev: data.dev(),
+                mode: data.mode(),
+                mtime: data.mtime(),
+                type: FileType::RegFile
             };
 
-            serialize_into(writer, &entry).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         }
 
-        seen.insert((entry._inode, entry._dev), Some(fs::canonicalize(&path)?.to_string_lossy().to_string()));
-    } else if data.is_symlink() {
+        seen.insert((entry.inode, entry.dev), Some(fs::canonicalize(&path)?.to_string_lossy().to_string()));
+    } else { // Is symbolic link
         entry = RatEntryFile {
-            _path: path.to_string(),
-            _content: None,
-            _size: data.size(),
-            _target: Some(fs::read_link(&path)?.to_string_lossy().to_string()),   
-            _inode: data.ino(),      
-            _dev: data.dev(),
-            _mode: data.mode(),
-            _m_time: data.mtime(),
-            _type: FileType::SymbFile
+            path: path.to_string(),
+            content: None,
+            size: data.size(),
+            target: Some(fs::read_link(&path)?.to_string_lossy().to_string()),   
+            inode: data.ino(),      
+            dev: data.dev(),
+            mode: data.mode(),
+            mtime: data.mtime(),
+            type: FileType::SymbFile
         };
-
-        serialize_into(writer, &entry).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
     }
-    Ok(())
+
+    return entry;
 }
 
-fn fetch_dir_files(_path: &String, _writer: &mut BufWriter<File>, _seen: &mut HashMap<(u64, u64), String>) -> std::io::Result<()>  {
+fn fetch_dir_files(path: &String, writer: &mut BufWriter<File>, seen: &mut HashMap<(u64, u64), String>) ->std::io::Result<(RatEntryDir)>  {
 
-    let mut paths: Vec<RatEntry>;
+    let mut entries: Vec<RatEntry> = Vec::new();
+    let mut dir_entries: HashMap<String, RatEntryFile> = HashMap::new();
+    let mut dirs: HashMap<String, RatEntryDir> = HashMap::new();
 
-    for entry in WalkDir::new(_path).into_iter().filter_map(|e| e.ok()) { // ignores entries the owner of process has no access previlige to it
-       
+    for entry in WalkDir::new(path).follow_links(false) { // ignores entries the owner of process has no access previlige to it
+       let entry = match entry {
+            Ok(e) => e,
+            Err(e) => if e.io_error().map_or(false, |e| e.kind() == io::ErrorKind::PermissionDenied) {
+                eprintln!("Skipping inaccessible entry: {}", e);
+                continue;
+            }
+       }
+
+       if entry.is_file() {
+            if let Some(parent) = entry.path().parent() {
+                let parent_str = parent.to_string_lossy().to_string();
+                let file_entry = construct_file_entry(&entry.path(), &fs::symlink_metadata(entry.path())?, seen);
+                dir_entries.insert(parent_str, file_entry);
+            }
+        }
     }
 
-    Ok(())
+    for (parent_path, file_meta) in dir_entries {
+        if parent_path == path {
+            entries.push(file_meta);
+        } else {
+            if dirs.contains(parent_path) {
+                dirs.get(parent_path).files.push(file_meta)
+            } else {
+                let mut dir_data = RatEntryDir {
+                    path: String::from(parent_path),
+                    files: Vec::new(),
+                };
+                dirs.insert(parent_path, dir_data);
+                dir_data.files.push(file_meta);
+            }
+        }
+    }
+
+    for (_, dir_metadata) in dirs {
+        entries.push(dir_metadata);
+    }
+
+    let mut dir_entry = RatEntryDir {
+        path: path,
+        files: entries,
+    };
+
+    return dir_entry;
 }
 
 pub fn archive_file(_rat_name: String, _paths: &Vec<String>) -> std::io::Result<()> {
@@ -153,7 +148,7 @@ pub fn archive_file(_rat_name: String, _paths: &Vec<String>) -> std::io::Result<
         if data.is_dir() {
             fetch_dir_files(path, &mut writer, &mut seen);
         } else { // if its a file or a symbolic link
-            serialize_file_entry(path, &data, &mut writer, &mut seen)?;
+            serialize_into(writer, &construct_file_entry(&path, &data, &mut seen)).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         }
     }
 
@@ -161,5 +156,3 @@ pub fn archive_file(_rat_name: String, _paths: &Vec<String>) -> std::io::Result<
 
     Ok(())
 }
-
-pub fn extract_file(_rat_name: String, _path_out: String) -> std::io::Result<()> { Ok(()) }

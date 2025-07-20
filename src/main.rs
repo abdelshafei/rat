@@ -1,4 +1,5 @@
 mod archiver;
+mod extractor;
 
 use clap::{Parser, Subcommand};
 

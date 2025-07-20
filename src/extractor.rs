@@ -1,0 +1,1 @@
+pub fn extract_file(_rat_name: String, _path_out: String) -> std::io::Result<()> { Ok(()) }
